@@ -1,3 +1,7 @@
 [build]
-  publish = "."
-  functions = "netlify/functions"
+  base = "sugarkrewe-simple"
+  publish = "sugarkrewe-simple"
+  functions = "sugarkrewe-simple/netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
