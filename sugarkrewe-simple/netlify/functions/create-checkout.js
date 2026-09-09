@@ -1,5 +1,3 @@
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
@@ -7,34 +5,55 @@ exports.handler = async (event) => {
 
   try {
     const { items } = JSON.parse(event.body);
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
 
-    // Build line items from cart
-    const lineItems = items.map((item) => ({
+    const lineItems = items.map(item => ({
       price_data: {
         currency: "usd",
-        product_data: {
-          name: item.name,
-          description: `${item.flavor} · 4 oz bag · Sugar Krewe`,
-          images: [], // You can add hosted image URLs here later
-          metadata: { flavor: item.flavor },
-        },
-        unit_amount: 699, // $6.99 in cents
+        product_data: { name: item.name },
+        unit_amount: 699,
       },
       quantity: item.qty,
     }));
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: lineItems,
-      mode: "payment",
-      shipping_address_collection: {
-        allowed_countries: ["US"],
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${stripeKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      shipping_options: [
-        {
-          shipping_rate_data: {
-            type: "fixed_amount",
-            fixed_amount: { amount: 0, currency: "usd" },
+      body: new URLSearchParams({
+        "payment_method_types[]": "card",
+        "mode": "payment",
+        "success_url": `${process.env.URL}/success.html`,
+        "cancel_url": `${process.env.URL}/`,
+        ...Object.fromEntries(lineItems.flatMap((item, i) => [
+          [`line_items[${i}][price_data][currency]`, "usd"],
+          [`line_items[${i}][price_data][product_data][name]`, item.price_data.product_data.name],
+          [`line_items[${i}][price_data][unit_amount]`, "699"],
+          [`line_items[${i}][quantity]`, String(item.quantity)],
+        ])),
+      }).toString(),
+    });
+
+    const session = await response.json();
+    
+    if (session.error) {
+      throw new Error(session.error.message);
+    }
+
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: session.url }),
+    };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: error.message }),
+    };
+  }
+};            fixed_amount: { amount: 0, currency: "usd" },
             display_name: "Free shipping",
             delivery_estimate: {
               minimum: { unit: "business_day", value: 5 },
