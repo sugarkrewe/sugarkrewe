@@ -1,4 +1,6 @@
-    exports.handler = async (event) => {
+    const https = require("https");
+
+exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
@@ -7,50 +9,52 @@
     const { items } = JSON.parse(event.body);
     const stripeKey = process.env.STRIPE_SECRET_KEY;
 
-    const lineItems = items.map(item => ({
-      price_data: {
-        currency: "usd",
-        product_data: { name: item.name },
-        unit_amount: 699,
-      },
-      quantity: item.qty,
-    }));
+    const params = new URLSearchParams();
+    params.append("mode", "payment");
+    params.append("payment_method_types[]", "card");
+    params.append("success_url", "https://sugarkrewe.com/success.html");
+    params.append("cancel_url", "https://sugarkrewe.com/");
 
-    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${stripeKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        "payment_method_types[]": "card",
-        "mode": "payment",
-        "success_url": `${process.env.URL}/success.html`,
-        "cancel_url": `${process.env.URL}/`,
-        ...Object.fromEntries(lineItems.flatMap((item, i) => [
-          [`line_items[${i}][price_data][currency]`, "usd"],
-          [`line_items[${i}][price_data][product_data][name]`, item.price_data.product_data.name],
-          [`line_items[${i}][price_data][unit_amount]`, "699"],
-          [`line_items[${i}][quantity]`, String(item.quantity)],
-        ])),
-      }).toString(),
+    items.forEach((item, i) => {
+      params.append(`line_items[${i}][price_data][currency]`, "usd");
+      params.append(`line_items[${i}][price_data][unit_amount]`, "699");
+      params.append(`line_items[${i}][price_data][product_data][name]`, item.name);
+      params.append(`line_items[${i}][quantity]`, String(item.qty));
     });
 
-    const session = await response.json();
-    
-    if (session.error) {
-      throw new Error(session.error.message);
-    }
+    const result = await new Promise((resolve, reject) => {
+      const postData = params.toString();
+      const options = {
+        hostname: "api.stripe.com",
+        path: "/v1/checkout/sessions",
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": Buffer.byteLength(postData),
+        },
+      };
+      const req = https.request(options, (res) => {
+        let data = "";
+        res.on("data", (chunk) => data += chunk);
+        res.on("end", () => resolve(JSON.parse(data)));
+      });
+      req.on("error", reject);
+      req.write(postData);
+      req.end();
+    });
+
+    if (result.error) throw new Error(result.error.message);
 
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: session.url }),
+      body: JSON.stringify({ url: result.url }),
     };
-  } catch (error) {
+  } catch (err) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: err.message }),
     };
   }
 };
