@@ -1,4 +1,4 @@
-    const https = require("https");
+const https = require("https");
 
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
@@ -8,6 +8,13 @@ exports.handler = async (event) => {
   try {
     const { items } = JSON.parse(event.body);
     const stripeKey = process.env.STRIPE_SECRET_KEY;
+
+    if (!stripeKey) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: "No Stripe key found" }),
+      };
+    }
 
     const params = new URLSearchParams();
     params.append("mode", "payment");
@@ -44,13 +51,12 @@ exports.handler = async (event) => {
       req.end();
     });
 
-    if (result.error) throw new Error(result.error.message);
-
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: result.url }),
+      body: JSON.stringify(result),
     };
+
   } catch (err) {
     return {
       statusCode: 500,
