@@ -9,13 +9,6 @@ exports.handler = async (event) => {
     const { items } = JSON.parse(event.body);
     const stripeKey = process.env.STRIPE_SECRET_KEY;
 
-    if (!stripeKey) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: "No Stripe key found" }),
-      };
-    }
-
     const params = new URLSearchParams();
     params.append("mode", "payment");
     params.append("payment_method_types[]", "card");
@@ -54,7 +47,11 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(result),
+      body: JSON.stringify({ 
+        url: result.url,
+        error: result.error,
+        debug: result
+      }),
     };
 
   } catch (err) {
